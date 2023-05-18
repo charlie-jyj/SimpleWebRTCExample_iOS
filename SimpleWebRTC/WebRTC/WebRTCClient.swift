@@ -21,7 +21,7 @@ protocol WebRTCClientDelegate {
 
 class WebRTCClient: NSObject, RTCPeerConnectionDelegate, RTCVideoViewDelegate, RTCDataChannelDelegate {
     
-    private var peerConnectionFactory: RTCPeerConnectionFactory!
+    private var peerConnectionFactory: RTCPeerConnectionFactory! // factory pattern
     private var peerConnection: RTCPeerConnection?
     private var videoCapturer: RTCVideoCapturer!
     private var localVideoTrack: RTCVideoTrack!
@@ -111,6 +111,7 @@ class WebRTCClient: NSObject, RTCPeerConnectionDelegate, RTCVideoViewDelegate, R
         self.peerConnection = setupPeerConnection()
         self.peerConnection!.delegate = self
         
+        // add local tracks
         if self.channels.video {
             self.peerConnection!.add(localVideoTrack, streamIds: ["stream0"])
         }
@@ -122,7 +123,7 @@ class WebRTCClient: NSObject, RTCPeerConnectionDelegate, RTCVideoViewDelegate, R
             self.dataChannel?.delegate = self
         }
         
-        
+        // offer 생성 후 set local description
         makeOffer(onSuccess: onSuccess)
     }
     
@@ -135,6 +136,7 @@ class WebRTCClient: NSObject, RTCPeerConnectionDelegate, RTCVideoViewDelegate, R
     
     // MARK: Signaling Event
     func receiveOffer(offerSDP: RTCSessionDescription, onCreateAnswer: @escaping (RTCSessionDescription) -> Void){
+        // offer를 받았다면 connection 생성, 로컬 미디어에 대한 track 생성 후 추가 (카메라, 마이크 등)
         if(self.peerConnection == nil){
             print("offer received, create peerconnection")
             self.peerConnection = setupPeerConnection()
@@ -152,6 +154,7 @@ class WebRTCClient: NSObject, RTCPeerConnectionDelegate, RTCVideoViewDelegate, R
             
         }
         
+        // remote description 등록
         print("set remote description")
         self.peerConnection!.setRemoteDescription(offerSDP) { (err) in
             if let error = err {
@@ -160,12 +163,14 @@ class WebRTCClient: NSObject, RTCPeerConnectionDelegate, RTCVideoViewDelegate, R
                 return
             }
             
+            // 성공 시 set local description 하고 answer 생성
             print("succeed to set remote offer SDP")
             self.makeAnswer(onCreateAnswer: onCreateAnswer)
         }
     }
     
     func receiveAnswer(answerSDP: RTCSessionDescription){
+        /** Apply the supplied RTCSessionDescription as the remote description. */
         self.peerConnection!.setRemoteDescription(answerSDP) { (err) in
             if let error = err {
                 print("failed to set remote answer SDP")

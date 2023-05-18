@@ -39,7 +39,7 @@ class ViewController: UIViewController, WebSocketDelegate, WebRTCClientDelegate,
     
     // Constants
     // MARK: Change this ip address in your case
-    let ipAddress: String = "192.168.1.189"
+    let ipAddress: String = "192.168.1.189" // signaling server
     let wsStatusMessageBase = "WebSocket: "
     let webRTCStatusMesasgeBase = "WebRTC: "
     let likeStr: String = "Like"
@@ -59,6 +59,7 @@ class ViewController: UIViewController, WebSocketDelegate, WebRTCClientDelegate,
         self.useCustomCapturer = false
         #endif
         
+        // webRTC 초기화 + webSocket 통신 초기화
         webRTCClient = WebRTCClient()
         webRTCClient.delegate = self
         webRTCClient.setup(videoTrack: true, audioTrack: true, dataChannel: true, customFrameCapturer: useCustomCapturer)
@@ -175,6 +176,7 @@ class ViewController: UIViewController, WebSocketDelegate, WebRTCClientDelegate,
     // MARK: - UI Events
     @objc func callButtonTapped(_ sender: UIButton){
         if !webRTCClient.isConnected {
+            // webRTC 연결하기 (offer)
             webRTCClient.connect(onSuccess: { (offerSDP: RTCSessionDescription) -> Void in
                 self.sendSDP(sessionDescription: offerSDP)
             })
@@ -279,16 +281,34 @@ extension ViewController {
     
     func websocketDidReceiveMessage(socket: WebSocketClient, text: String) {
         
+        /*
+         webRTC는 브라우저끼리 P2P 통신을 하지만 signal channel로 websocket을 사용
+         signaling 이란 서로 다른 네트워크에 있는 2개의 클라이언트 간 미디어 포맷 등을 상호 연동하기 위한 Negotiation 사전 작업
+         SDP 라는 메타데이터를 가진 offer 와 answer를 주고 받는다.
+         
+         webRTC connection endpoint에 대한 config 를 session description 이라고 한다.
+         미디어의 종류, 포맷, 사용되는 프로토코르 ip 주소, 포트 등의 정보가 담겨있고 SDP 를 통해 교환된다
+         
+         initiator가 proposed config를 담은 offer를 보낸다
+         각 peer는 자신을 설명하는 Local description + 상대방에 대한 remote description을 가진다
+         
+         미디어에 대한 정보 뿐 아니라 network conneciton 에 대한 정보도 peer끼리 주고 받는다 (ICE negotiation)
+         ICE candidate(best~worst) + avaiable method
+         보통 candidate는 UDP가 사용되지만 TCP도 허용
+         이 예제에서는 websocket 서버를 sinal server로 사용하고 있음
+         */
         do{
             let signalingMessage = try JSONDecoder().decode(SignalingMessage.self, from: text.data(using: .utf8)!)
             
             if signalingMessage.type == "offer" {
                 webRTCClient.receiveOffer(offerSDP: RTCSessionDescription(type: .offer, sdp: (signalingMessage.sessionDescription?.sdp)!), onCreateAnswer: {(answerSDP: RTCSessionDescription) -> Void in
+                    // offer에 대한 answer 보내기
                     self.sendSDP(sessionDescription: answerSDP)
                 })
             }else if signalingMessage.type == "answer" {
                 webRTCClient.receiveAnswer(answerSDP: RTCSessionDescription(type: .answer, sdp: (signalingMessage.sessionDescription?.sdp)!))
             }else if signalingMessage.type == "candidate" {
+                // candidate ICE config which may be used to establish an RTCPeerConnection
                 let candidate = signalingMessage.candidate!
                 webRTCClient.receiveCandidate(candidate: RTCIceCandidate(sdp: candidate.sdp, sdpMLineIndex: candidate.sdpMLineIndex, sdpMid: candidate.sdpMid))
             }
